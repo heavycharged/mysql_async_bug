@@ -24,23 +24,28 @@ async fn main() -> anyhow::Result<()> {
     let data = web::Data::new(app);
     let data_clone = data.clone();
 
-    let result = HttpServer::new(move || {
+    let server = HttpServer::new(move || {
         App::new()
             .app_data(data.clone())
             .service(load_from_db)
     }).bind(("127.0.0.1", 8080))?
-        .run()
-        .await;
+        .run();
+
+    let handle = server.handle();
 
 
-    if let Err(e) = result {
-        error!("http server stopped: {}", e);
-    }
+    tokio::spawn(server);
+    tokio::signal::ctrl_c().await;
 
-    debug!("starting shutdown ");
+    debug!("started server shutdown...");
+    handle.stop(true).await;
+    debug!("finished server shutdown...");
+
+    debug!("starting shutdown mysql");
     if let Err(e) = data_clone.shutdown().await {
-        error!("cannot shutdown app: {}", e);
+        error!("cannot shutdown mysql: {}", e);
     }
+    debug!("finished shutdown mysql pool");
 
     Ok(())
 }
