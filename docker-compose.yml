@@ -1,0 +1,17 @@
+version: "3"
+services:
+  mysql_async_bug:
+    build: .
+    ports:
+      - "8080:8080"
+    environment:
+      - RUST_LOG=debug
+    stop_grace_period: 30m # wait for 30m until killing container
+  mysql:
+    container_name: mysql
+    image: mysql
+    environment:
+      - MYSQL_ROOT_PASSWORD=root
+      - MYSQL_DATABASE=test
+    ports:
+      - "3306:3306"

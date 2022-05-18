@@ -1,8 +1,9 @@
+use std::time::Duration;
 use actix_web::{App, Responder, web};
 use mysql_async::{Pool};
 use mysql_async_bug::AppState;
 use actix_web::{HttpServer, get};
-use log::{error, debug};
+use log::{error, debug, warn};
 
 
 #[tokio::main]
@@ -12,35 +13,45 @@ async fn main() -> anyhow::Result<()> {
     // spawn some mysql instance in docker, e.g.:
     // docker run -it -d --name mysql_test -e MYSQL_ROOT_PASSWORD=root -e MYSQL_DATABASE=test -p 127.0.0.1:3306:3306 mysql
 
+    debug!("starting application...");
+
     let dsn = format!(
         "mysql://{}:{}@{}/{}",
-        "root", "root", "127.0.0.1:3306", "test"
+        "root", "root", "mysql:3306", "test"
     );
 
-    let app = AppState::new(Pool::from_url(
-        &dsn
-    )?);
+    let pool = loop {
+        match Pool::from_url(&dsn) {
+            Ok(pool) => break pool,
+            Err(e) => {
+                warn!("cannot connect to db... {:?}", e);
+                tokio::time::sleep(Duration::from_secs(3)).await;
+            }
+        }
+    };
+    let app = AppState::new(pool);
 
     let data = web::Data::new(app);
     let data_clone = data.clone();
 
+    debug!("starting http server...");
     let result = HttpServer::new(move || {
         App::new()
             .app_data(data.clone())
             .service(load_from_db)
-    }).bind(("127.0.0.1", 8080))?
+    }).bind(("0.0.0.0", 8080))?
         .run()
         .await;
 
-
     if let Err(e) = result {
-        error!("http server stopped: {}", e);
+        error!("http server stopped with error: {}", e);
     }
 
-    debug!("starting shutdown ");
+    debug!("starting shutdown of mysql pool...");
     if let Err(e) = data_clone.shutdown().await {
-        error!("cannot shutdown app: {}", e);
+        error!("cannot shutdown pool: {}", e);
     }
+    debug!("WOOHOO! pool was shutdown finally (or you forgot to make at least one request)");
 
     Ok(())
 }
@@ -51,6 +62,9 @@ async fn load_from_db(data: web::Data<AppState>) -> impl Responder {
 
     match number {
         Ok(v) => v.to_string(),
-        Err(e) => e.to_string(),
+        Err(e) => {
+            warn!("error occurred: {}", e);
+            e.to_string()
+        },
     }
 }
