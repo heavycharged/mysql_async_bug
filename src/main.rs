@@ -2,7 +2,9 @@ use actix_web::{App, Responder, web};
 use mysql_async::{Pool};
 use mysql_async_bug::AppState;
 use actix_web::{HttpServer, get};
+use anyhow::anyhow;
 use log::{error, debug};
+use thiserror::Error;
 
 
 #[tokio::main]
@@ -29,20 +31,12 @@ async fn main() -> anyhow::Result<()> {
             .app_data(data.clone())
             .service(load_from_db)
     }).bind(("127.0.0.1", 8080))?
-        .run();
+        .run()
+        .await;
 
-    let handle = server.handle();
-
-
-    tokio::spawn(server);
-    tokio::signal::ctrl_c().await;
-
-    debug!("started server shutdown...");
-    handle.stop(true).await;
-    debug!("finished server shutdown...");
 
     debug!("starting shutdown mysql");
-    if let Err(e) = data_clone.shutdown().await {
+    if let Err(e) = data_clone.into_inner().shutdown().await {
         error!("cannot shutdown mysql: {}", e);
     }
     debug!("finished shutdown mysql pool");
