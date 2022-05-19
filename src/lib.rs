@@ -1,7 +1,6 @@
 use std::sync::Arc;
 use anyhow::anyhow;
 use mysql_async::{Pool, prelude::*};
-use tokio::sync::Mutex;
 
 pub struct AppState {
     mysql_conn_pool: Pool,
@@ -25,7 +24,7 @@ impl AppState {
     /// This functions shutdowns the mysql connection pool.
     pub async fn shutdown(self: Arc<Self>) -> anyhow::Result<()> {
         if let Ok(v) = Arc::try_unwrap(self) {
-            return Ok(v.mysql_conn_pool.disconnect().await?)
+            return Ok(v.mysql_conn_pool.disconnect().await?);
         }
         panic!("cannot unwrap arc value, someone still has access to the value")
     }
