@@ -12,28 +12,23 @@ async fn main() -> anyhow::Result<()> {
 
     // spawn some mysql instance in docker, e.g.:
     // docker run -it -d --name mysql_test -e MYSQL_ROOT_PASSWORD=root -e MYSQL_DATABASE=test -p 127.0.0.1:3306:3306 mysql
+    // dont forget to provide MYSQL_ADDR env variable with host:port pairs.
 
     debug!("starting application...");
 
+    let mysql_addr = std::env::var("MYSQL_ADDR").unwrap_or_else(|_| "mysql:3306".to_string());
+
     let dsn = format!(
         "mysql://{}:{}@{}/{}",
-        "root", "root", "mysql:3306", "test"
+        "root", "root", mysql_addr, "test"
     );
 
-    let pool = loop {
-        match Pool::from_url(&dsn) {
-            Ok(pool) => break pool,
-            Err(e) => {
-                warn!("cannot connect to db... {:?}", e);
-                tokio::time::sleep(Duration::from_secs(3)).await;
-            }
-        }
-    };
+    let pool = Pool::from_url(&dsn)?;
+
     let app = AppState::new(pool);
 
     let data = web::Data::new(app);
     let data_clone = data.clone();
-
 
     debug!("starting http server...");
     let result = HttpServer::new(move || {
@@ -48,8 +43,11 @@ async fn main() -> anyhow::Result<()> {
         error!("http server stopped with error: {}", e);
     }
 
-    debug!("starting shutdown mysql");
-    if let Err(e) = tokio::spawn(data_clone.into_inner().shutdown()).await {
+    debug!("sleep for 3 secs...");
+    tokio::time::sleep(Duration::from_secs(3)).await;
+    debug!("sleep done");
+
+    if let Err(e) = data_clone.into_inner().shutdown().await {
         error!("cannot shutdown mysql: {}", e);
     }
     debug!("WOOHOO! pool was shutdown finally (or you forgot to make at least one request)");
